@@ -60,7 +60,7 @@ def main():
             drops.add(a[1:])
         else:
             entry, path = a.split("=", 1)
-            reps[entry] = path
+            reps[entry] = path.rstrip("\r")  # tolerate CRLF in arg strings
     os.makedirs(os.path.dirname(out), exist_ok=True)
 
     missing = splice(out, reps, drops)
