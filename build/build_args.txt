@@ -1,0 +1,16 @@
+resources.arsc=Z:\hermes\instapro\build\resources.arsc
+res/mipmap-mdpi/ig_launcher_background.png=Z:\hermes\instapro\build\igicon\mdpi_bg.png
+res/mipmap-mdpi/ig_launcher_foreground.png=Z:\hermes\instapro\build\igicon\mdpi_fg.png
+res/mipmap-mdpi/icon.png=Z:\hermes\instapro\build\igicon\mdpi_legacy.png
+res/mipmap-hdpi/ig_launcher_background.png=Z:\hermes\instapro\build\igicon\hdpi_bg.png
+res/mipmap-hdpi/ig_launcher_foreground.png=Z:\hermes\instapro\build\igicon\hdpi_fg.png
+res/mipmap-hdpi/icon.png=Z:\hermes\instapro\build\igicon\hdpi_legacy.png
+res/mipmap-xhdpi/ig_launcher_background.png=Z:\hermes\instapro\build\igicon\xhdpi_bg.png
+res/mipmap-xhdpi/ig_launcher_foreground.png=Z:\hermes\instapro\build\igicon\xhdpi_fg.png
+res/mipmap-xhdpi/icon.png=Z:\hermes\instapro\build\igicon\xhdpi_legacy.png
+res/mipmap-xxhdpi/ig_launcher_background.png=Z:\hermes\instapro\build\igicon\xxhdpi_bg.png
+res/mipmap-xxhdpi/ig_launcher_foreground.png=Z:\hermes\instapro\build\igicon\xxhdpi_fg.png
+res/mipmap-xxhdpi/icon.png=Z:\hermes\instapro\build\igicon\xxhdpi_legacy.png
+res/mipmap-xxxhdpi/ig_launcher_background.png=Z:\hermes\instapro\build\igicon\xxxhdpi_bg.png
+res/mipmap-xxxhdpi/ig_launcher_foreground.png=Z:\hermes\instapro\build\igicon\xxxhdpi_fg.png
+res/mipmap-xxxhdpi/icon.png=Z:\hermes\instapro\build\igicon\xxxhdpi_legacy.png

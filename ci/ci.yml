@@ -1,0 +1,103 @@
+name: Build InstaNi
+
+on:
+  workflow_dispatch:
+    inputs:
+      apk_url:
+        description: 'URL آخرین اینستاگرام مد (خالی = از متغیر استفاده شود)'
+        required: false
+  push:
+    branches: [main]
+    paths:
+      - 'ci/**'
+      - 'build/**'
+      - '.github/**'
+env:
+  APK_URL: ${{ github.event.inputs.apk_url || secrets.INSTAPRO_URL || env.DEFAULT_APK_URL }}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: false
+
+      - name: Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Install Android Build Tools 36.1.0 + Apktool
+        run: |
+          mkdir -p sdk/build-tools/36.1.0 apktool
+          curl -fsSL -o sdk/build-tools_36_1_0.zip \
+            https://dl.google.com/android/repository/build-tools_r36.1.0-linux.zip
+          unzip -q -o sdk/build-tools_36_1_0.zip -d sdk/build-tools/36.1.0
+          curl -fsSL -o apktool/apktool.jar \
+            https://github.com/iBotPeaches/Apktool/releases/download/v2.11.1/apktool_2.11.1.jar
+          export ANDROID_HOME=${{ github.workspace }}/sdk
+          export PATH="$ANDROID_HOME/build-tools/36.1.0:$PATH"
+
+      - name: Download InstaPro
+        env:
+          URL: ${{ env.APK_URL }}
+        run: |
+          if [ -z "$URL" ]; then
+            echo "APK_URL is not set. Set a GitHub secret INSTAPRO_URL or pass URL in workflow_dispatch."
+            exit 1
+          fi
+          mkdir -p downloads
+          curl -fsSL "$URL" -o downloads/instapro.apk
+          ls -lh downloads/instapro.apk
+          sha256sum downloads/instapro.apk
+
+      - name: Decompile
+        run: |
+          java -Xmx6g -jar apktool/apktool.jar d -f -o decoded downloads/instapro.apk
+
+      - name: Patch (branding + remove ads)
+        run: |
+          python patch_strings_safe.py build/resources.arsc.orig build/resources.arsc-safe.apk \
+            "InstaPro ♚=InstaNi" \
+            "InstaPro ♚ settings=InstaNi settings" \
+            "InstaPro Settings=InstaNi Settings" \
+            "InstaPro Direct=InstaNi Direct" \
+            "Create a backup for InstaPro settings to restore later=Create a backup for InstaNi settings to restore later" \
+            "Restore InstaPro settings from back file created earlier=Restore InstaNi settings from back file created earlier" \
+            "To open InstaPro Settings long press Instagram logo in header=To open InstaNi Settings long press Instagram logo in header"
+
+      - name: Assemble + Sign
+        run: |
+          python build_apk.py out/InstaNi-latest.apk $(tr '\n' ' ' < build/build_args.txt)
+          echo "built: $(ls -lh out/InstaNi-latest.apk | awk '{print $5, $6}')"
+
+      - name: Verify signature matches AOSP
+        run: |
+          "$ANDROID_HOME/build-tools/36.1.0/apksigner" verify --print-certs out/InstaNi-latest.apk \
+            | grep -i "61ed377e85d386a8dfee6b864bd85b0bfaa5af81" && echo "signature OK"
+
+      - name: Create release tag
+        id: tag
+        run: |
+          ver=$(aapt2 dump badging out/InstaNi-latest.apk 2>/dev/null | grep -m1 versionName || echo "v15.65")
+          echo "tag_name=InstaNi-$ver" >> $GITHUB_OUTPUT
+
+      - name: Upload APK to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tag.outputs.tag_name }}
+          name: InstaNi ${{ steps.tag.outputs.tag_name }}
+          generate_release_notes: true
+          files: out/InstaNi-latest.apk
+
+      - name: Deploy to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v4
+        if: github.ref == 'refs/heads/main'
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./out
+          user_name: github-actions[bot]
+          user_email: github-actions[bot]@users.noreply.github.com
