@@ -19,6 +19,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       INSTANI_ROOT: ${{ github.workspace }}
+      APKTOOL_JAR: ${{ github.workspace }}/apktool/apktool.jar
     steps:
       - name: Checkout
         uses: actions/checkout@v4
