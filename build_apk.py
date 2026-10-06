@@ -6,13 +6,14 @@ If no dex pairs given, just re-signs a copy of the original (pipeline test).
 """
 import os, sys, zipfile, shutil, subprocess, hashlib
 
-ROOT = r"Z:\hermes\instapro"
-ORIG = os.path.join(ROOT, "instapro-15.65.apk")
+# Windows layout kept as the default; CI overrides via env.
+ROOT = os.environ.get("INSTANI_ROOT", r"Z:\hermes\instapro")
+ORIG = os.environ.get("ORIG_APK", os.path.join(ROOT, "instapro-15.65.apk"))
 BUILD = os.path.join(ROOT, "build")
 TOOLS = os.path.join(ROOT, "tools")
-SDK = r"Z:\hermes\android-sdk"
+SDK = os.environ.get("ANDROID_HOME", r"Z:\hermes\android-sdk")
 BT = os.path.join(SDK, "build-tools", "36.1.0")
-JDK = r"Z:\hermes\jdk17\jdk17.0.20_10\bin"
+JDK = os.environ.get("JDK_BIN", r"Z:\hermes\jdk17\jdk17.0.20_10\bin")
 # The mod validates the APK's own signing certificate in native code, so a
 # re-signed build refuses to run. The original was signed with AOSP's published
 # *test* key (CN=Android, O=Android, EMAILADDRESS=android@android.com,
@@ -72,18 +73,29 @@ def main():
     aligned = out + ".aligned"
     if os.path.exists(aligned):
         os.remove(aligned)
-    env = dict(os.environ, PATH=JDK + os.pathsep + os.environ.get("PATH", ""))
-    # apksigner.bat is a Windows batch file: an MSYS-style JAVA_HOME (/z/...) makes
-    # it bail out, so hand it the native path.
-    env["JAVA_HOME"] = os.path.dirname(JDK)
-    r = subprocess.run([os.path.join(BT, "zipalign.exe"), "-p", "-f", "4", out, aligned],
+    env = dict(os.environ)
+    # Local Windows build: put the bundled JDK on PATH. On CI, setup-java
+    # already provides java + JAVA_HOME.
+    if os.path.isdir(JDK):
+        env["PATH"] = JDK + os.pathsep + env.get("PATH", "")
+        env["JAVA_HOME"] = os.path.dirname(JDK)
+
+    def tool(name):
+        # Windows distro ships name.exe / name.bat, Linux ships a bare name.
+        for cand in (name, name + ".exe", name + ".bat"):
+            p = os.path.join(BT, cand)
+            if os.path.exists(p):
+                return p
+        return os.path.join(BT, name)
+
+    r = subprocess.run([tool("zipalign"), "-p", "-f", "4", out, aligned],
                        capture_output=True, text=True, env=env)
     if r.returncode:
         print("zipalign FAILED:", r.stdout, r.stderr)
         return 1
     print("zipalign ok")
 
-    sign = [os.path.join(BT, "apksigner.bat"), "sign",
+    sign = [tool("apksigner"), "sign",
             "--ks", KS, "--ks-key-alias", ALIAS, "--ks-pass", f"pass:{PASSWORD}",
             "--key-pass", f"pass:{PASSWORD}", "--v1-signing-enabled", "true",
             "--v2-signing-enabled", "true", "--v3-signing-enabled", "true",
@@ -97,7 +109,7 @@ def main():
     print("sign ok")
     os.remove(aligned)
 
-    r = subprocess.run([os.path.join(BT, "apksigner.bat"), "verify", "--print-certs", out],
+    r = subprocess.run([tool("apksigner"), "verify", "--print-certs", out],
                        capture_output=True, text=True, env=env)
     print(r.stdout.strip()[:600] or r.stderr.strip()[:600])
     h = hashlib.sha256(open(out, "rb").read()).hexdigest()

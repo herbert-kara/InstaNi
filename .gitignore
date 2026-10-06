@@ -1,0 +1,16 @@
+decoded/
+fresh/
+out/
+downloads/
+stock/
+tools/
+*.apk
+build/*
+!build/build_args.txt
+!build/igicon/
+!build/pinlock_forwarder.smali
+!build/main_settings_clean.xml
+!build/transparent/
+!build/certs/
+build/certs/*
+!build/certs/testkey-nopass.p12

@@ -1,0 +1,150 @@
+name: Build InstaNi
+
+on:
+  workflow_dispatch:
+    inputs:
+      apk_url:
+        description: 'URL آخرین اینستاگرام مد (خالی = از update-trigger.txt یا secret استفاده شود)'
+        required: false
+  push:
+    branches: [main]
+    paths:
+      - 'update-trigger.txt'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      ANDROID_HOME: ${{ github.workspace }}/sdk
+      INSTANI_ROOT: ${{ github.workspace }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Install Android Build Tools 36.1.0 + Apktool
+        run: |
+          mkdir -p sdk/build-tools/36.1.0 apktool
+          curl -fsSL -o sdk/build-tools.zip \
+            https://dl.google.com/android/repository/build-tools_r36.1.0-linux.zip
+          unzip -q -o sdk/build-tools.zip -d sdk/build-tools/36.1.0
+          curl -fsSL -o apktool/apktool.jar \
+            https://github.com/iBotPeaches/Apktool/releases/download/v2.11.1/apktool_2.11.1.jar
+
+      - name: Download InstaPro
+        run: |
+          set -euo pipefail
+          URL="${{ github.event.inputs.apk_url }}"
+          if [ -z "$URL" ] && [ -f update-trigger.txt ]; then
+            URL=$(tr -d '\r\n' < update-trigger.txt)
+          fi
+          if [ -z "$URL" ]; then
+            URL="${{ secrets.INSTAPRO_URL }}"
+          fi
+          if [ -z "$URL" ]; then
+            echo "::error::APK_URL not set — pass it in workflow_dispatch, write it into update-trigger.txt, or set the INSTAPRO_URL secret."
+            exit 1
+          fi
+          mkdir -p downloads
+          curl -fsSL "$URL" -o downloads/instapro.apk
+          ls -lh downloads/instapro.apk
+          sha256sum downloads/instapro.apk
+
+      - name: Decompile
+        run: java -Xmx6g -jar apktool/apktool.jar d -f -o decoded downloads/instapro.apk
+
+      - name: Apply InstaNi edits (DevMsg + PIN-lock forwarder)
+        run: |
+          set -euo pipefail
+          python fix_devmsg.py decoded/smali_classes20 | tee /tmp/fix.log
+          if grep -q MISSING /tmp/fix.log; then
+            echo "::error::DevMsg classes moved upstream — fix_devmsg.py needs new paths"
+            exit 1
+          fi
+          cp build/pinlock_forwarder.smali decoded/smali_classes20/com/OM7753/gold/PinLockActivity.smali
+
+      - name: Guard — settings menu unchanged upstream
+        run: |
+          set -euo pipefail
+          unzip -p downloads/instapro.apk res/xml/main_settings.xml > /tmp/main_settings.xml
+          got=$(sha256sum /tmp/main_settings.xml | cut -d' ' -f1)
+          want=bd6ae7d4416cec89c6a61ad3d41c891fc91dc8b1a9755c64ee89e9a0e2e420a4
+          if [ "$got" != "$want" ]; then
+            echo "::error::res/xml/main_settings.xml changed upstream ($got). Re-run the AXML patch locally and refresh build/main_settings_clean.xml before releasing."
+            exit 1
+          fi
+          echo "main_settings.xml matches the patched baseline"
+
+      - name: Assemble patched classes20.dex
+        run: python assemble_one.py smali_classes20 build/dex/classes20b.dex
+
+      - name: Patch branding in resources.arsc
+        run: |
+          set -euo pipefail
+          unzip -p downloads/instapro.apk resources.arsc > build/resources.arsc.orig
+          python patch_strings_safe.py build/resources.arsc.orig build/resources.arsc \
+            "InstaPro ♚=InstaNi" \
+            "InstaPro ♚ settings=InstaNi settings" \
+            "InstaPro Settings=InstaNi Settings" \
+            "InstaPro Direct=InstaNi Direct" \
+            "Create a backup for InstaPro settings to restore later=Create a backup for InstaNi settings to restore later" \
+            "Restore InstaPro settings from back file created earlier=Restore InstaNi settings from back file created earlier" \
+            "To open InstaPro Settings long press Instagram logo in header=To open InstaNi Settings long press Instagram logo in header" \
+            | tee /tmp/arsc.log
+          if grep -q '!! not found' /tmp/arsc.log; then
+            echo "::error::branding strings not found — InstaPro wording changed upstream, update the patch pairs"
+            exit 1
+          fi
+
+      - name: Assemble + Sign
+        env:
+          ORIG_APK: ${{ github.workspace }}/downloads/instapro.apk
+          APKSIGN_KS: ${{ github.workspace }}/build/certs/testkey-nopass.p12
+          APKSIGN_KS_TYPE: PKCS12
+          APKSIGN_ALIAS: testkey
+          APKSIGN_PASS: ''
+        run: |
+          set -euo pipefail
+          python build_apk.py out/InstaNi-latest.apk $(tr '\n' ' ' < build/build_args.txt) | tee /tmp/build.log
+          if grep -q 'entries not found in APK' /tmp/build.log; then
+            echo "::error::build_args references entries missing from the new APK (icons/menu/xml?)"
+            exit 1
+          fi
+          echo "built: $(ls -lh out/InstaNi-latest.apk | awk '{print $5, $6}')"
+
+      - name: Verify signature matches AOSP testkey
+        run: |
+          "$ANDROID_HOME/build-tools/36.1.0/apksigner" verify --print-certs out/InstaNi-latest.apk \
+            | grep -i "61ed377e85d386a8dfee6b864bd85b0bfaa5af81" && echo "signature OK"
+
+      - name: Create release tag
+        id: tag
+        run: |
+          ver=$("$ANDROID_HOME/build-tools/36.1.0/aapt2" dump badging out/InstaNi-latest.apk 2>/dev/null \
+            | grep -oP "versionName='\K[^']+" | head -1)
+          echo "tag_name=InstaNi-${ver:-unknown}" >> $GITHUB_OUTPUT
+
+      - name: Upload APK to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tag.outputs.tag_name }}
+          name: InstaNi ${{ steps.tag.outputs.tag_name }}
+          generate_release_notes: true
+          files: out/InstaNi-latest.apk
+
+      - name: Deploy to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v4
+        if: github.ref == 'refs/heads/main'
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./out
+          user_name: github-actions[bot]
+          user_email: github-actions[bot]@users.noreply.github.com
