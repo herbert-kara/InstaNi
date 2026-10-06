@@ -12,7 +12,8 @@ ORIG = os.environ.get("ORIG_APK", os.path.join(ROOT, "instapro-15.65.apk"))
 BUILD = os.path.join(ROOT, "build")
 TOOLS = os.path.join(ROOT, "tools")
 SDK = os.environ.get("ANDROID_HOME", r"Z:\hermes\android-sdk")
-BT = os.path.join(SDK, "build-tools", "36.1.0")
+# CI runners ship their own build-tools (detected in the workflow); local keeps 36.1.0.
+BT = os.environ.get("BT_DIR") or os.path.join(SDK, "build-tools", "36.1.0")
 JDK = os.environ.get("JDK_BIN", r"Z:\hermes\jdk17\jdk17.0.20_10\bin")
 # The mod validates the APK's own signing certificate in native code, so a
 # re-signed build refuses to run. The original was signed with AOSP's published

@@ -18,7 +18,6 @@ jobs:
   build:
     runs-on: ubuntu-latest
     env:
-      ANDROID_HOME: ${{ github.workspace }}/sdk
       INSTANI_ROOT: ${{ github.workspace }}
     steps:
       - name: Checkout
@@ -30,12 +29,16 @@ jobs:
           distribution: temurin
           java-version: 17
 
-      - name: Install Android Build Tools 36.1.0 + Apktool
+      - name: Locate preinstalled Android build tools
         run: |
-          mkdir -p sdk/build-tools/36.1.0 apktool
-          curl -fsSL -o sdk/build-tools.zip \
-            https://dl.google.com/android/repository/build-tools_r36.1.0-linux.zip
-          unzip -q -o sdk/build-tools.zip -d sdk/build-tools/36.1.0
+          set -euo pipefail
+          BT=$(ls -d "$ANDROID_HOME"/build-tools/*/ | sort -V | tail -1)
+          echo "BT_DIR=${BT%/}" >> "$GITHUB_ENV"
+          echo "using build-tools: $BT"
+
+      - name: Install Apktool 2.11.1
+        run: |
+          mkdir -p apktool
           curl -fsSL -o apktool/apktool.jar \
             https://github.com/iBotPeaches/Apktool/releases/download/v2.11.1/apktool_2.11.1.jar
 
@@ -122,13 +125,13 @@ jobs:
 
       - name: Verify signature matches AOSP testkey
         run: |
-          "$ANDROID_HOME/build-tools/36.1.0/apksigner" verify --print-certs out/InstaNi-latest.apk \
+          "$BT_DIR/apksigner" verify --print-certs out/InstaNi-latest.apk \
             | grep -i "61ed377e85d386a8dfee6b864bd85b0bfaa5af81" && echo "signature OK"
 
       - name: Create release tag
         id: tag
         run: |
-          ver=$("$ANDROID_HOME/build-tools/36.1.0/aapt2" dump badging out/InstaNi-latest.apk 2>/dev/null \
+          ver=$("$BT_DIR/aapt2" dump badging out/InstaNi-latest.apk 2>/dev/null \
             | grep -oP "versionName='\K[^']+" | head -1)
           echo "tag_name=InstaNi-${ver:-unknown}" >> $GITHUB_OUTPUT
 
