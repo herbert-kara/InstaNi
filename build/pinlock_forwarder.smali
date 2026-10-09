@@ -20,7 +20,8 @@
     const-class v1, Lcom/instagram/mainactivity/InstagramMainActivity;
     invoke-direct {v0, p0, v1}, Landroid/content/Intent;-><init>(Landroid/content/Context;Ljava/lang/Class;)V
     const v2, 0x14004000
-    invoke-virtual {v0, v2}, Landroid/content/Intent;->addFlags(I)V
+    invoke-virtual {v0, v2}, Landroid/content/Intent;->addFlags(I)Landroid/content/Intent;
+    move-result-object v0
     invoke-virtual {p0, v0}, Lcom/OM7753/gold/PinLockActivity;->startActivity(Landroid/content/Intent;)V
     return-void
 .end method
