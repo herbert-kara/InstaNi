@@ -75,17 +75,15 @@ jobs:
           fi
           cp build/pinlock_forwarder.smali decoded/smali_classes20/com/OM7753/gold/PinLockActivity.smali
 
-      - name: Guard — settings menu unchanged upstream
+      - name: Patch settings menu (InstaNi branding, any version)
         run: |
           set -euo pipefail
-          unzip -p downloads/instapro.apk res/xml/main_settings.xml > /tmp/main_settings.xml
-          got=$(sha256sum /tmp/main_settings.xml | cut -d' ' -f1)
-          want=bd6ae7d4416cec89c6a61ad3d41c891fc91dc8b1a9755c64ee89e9a0e2e420a4
-          if [ "$got" != "$want" ]; then
-            echo "::error::res/xml/main_settings.xml changed upstream ($got). Re-run the AXML patch locally and refresh build/main_settings_clean.xml before releasing."
+          unzip -p downloads/instapro.apk res/xml/main_settings.xml > build/main_settings.orig
+          python patch_main_settings.py build/main_settings.orig build/main_settings.xml | tee /tmp/ms.log
+          if ! grep -qi 'instani' /tmp/ms.log; then
+            echo "::error::no branding edit applied to main_settings.xml — pool layout changed, review patch_main_settings.py"
             exit 1
           fi
-          echo "main_settings.xml matches the patched baseline"
 
       - name: Assemble patched classes20.dex
         run: python assemble_one.py smali_classes20 build/dex/classes20b.dex
